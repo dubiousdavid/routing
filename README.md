@@ -29,6 +29,16 @@ Furthermore, middleware is designed to be dependably testable as well. Take for 
 Below is a fairly comprehensive example of how to use this library. To see what the output would be for a given route, look at the expected test result in [test/routing.examples-test.clj](https://github.com/dubiousdavid/routing/blob/master/test/routing/examples_test.clj).
 
 ```clojure
+(ns my-ns
+  (:require [routing.core :refer :all]
+            [routing.middleware.cookies :as cookies]
+            [ring.middleware.session :refer [wrap-session]]
+            [routing.middleware.params :as params]
+            [routing.middleware.logging :as log]
+            [routing.middleware :as mw]
+            [routing.response :refer [ok]]
+            [monads.state :refer [asks]]))
+
 (def posts
   {1234 "Super helpful blog post"})
 
