@@ -20,7 +20,13 @@ http://dubiousdavid.github.io/routing/
 
 ## How to use
 
-Routes are split into segment paths, where each segment is separated by a forward slash in the request URL. If a route consumes all the segments then the body of that route is returned as the response. Below is a fairly comprehensive example of how to use this library.
+Routes are split into segment paths, where each segment is separated by a forward slash in the request URL. If a route consumes all the segments then the body of that route is returned as the response.
+
+Routing is totally pure, that is there are no side effects. Assuming that the body of your routes are also pure, or you are able to reproduce a consistent app state, you should be able to create dependable tests around your routes.
+
+Furthermore, middleware is designed to be dependably testable as well. Take for example logging. The side-effect of logging does not take place until after the route has been selected, allowing you to test what log messages would be produced in a purely functional manner.
+
+Below is a fairly comprehensive example of how to use this library. To see what the output would be for a given route, look at the expected test result in [test/routing.examples-test.clj](https://github.com/dubiousdavid/routing/blob/master/test/routing/examples_test.clj).
 
 ```clojure
 (def posts
