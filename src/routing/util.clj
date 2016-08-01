@@ -8,6 +8,9 @@
   (println state)
   [nil state])
 
+(defn select-values [map ks]
+  (mapv #(get map %) ks))
+
 (defn path-consumed? [state]
   (empty? (:routing/path-segments state)))
 

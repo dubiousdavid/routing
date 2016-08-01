@@ -86,9 +86,9 @@
 (fact (:body (handler (req "/black-hole" :domain "admin.example.org"))) =>
   "You got sucked in.")
 (fact (:body (handler (req "/users/1" :domain "admin.example.org"))) =>
-  "{\"last-name\":\"Bob\",\"user-id\":1,\"first-name\":\"Billy\"}")
+      "{\"user-id\":1,\"first-name\":\"Billy\",\"last-name\":\"Bob\"}")
 (fact (:body (handler (req "/users" :query-string "firstname=Billy&lastname=Bob" :domain "admin.example.org" :method :post))) =>
-  "1")
+  "Billy Bob successfully inserted")
 (fact (:body (handler (req "/users" :query-string "id=1" :domain "admin.example.org" :method :delete))) =>
   "User successfully deleted")
 (fact (handler (req "/view/monkeys" :domain "admin.example.org")) =>
@@ -99,10 +99,10 @@
    :routing/middleware {:cookies {"warning" {:path "/", :value "Animals have escaped the zoo!"}}}})
 (fact (-> (handler (req "/launch-missles" :domain "admin.example.org")) :routing/middleware :cookies) =>
   {"missle-launched" {:value "It's a nuke!", :path "/"}})
-(fact (handler (req "/images/clojure-icon.gif")) =>
-  {:status 200,
-   :headers
-   {"Last-Modified" "Mon, 08 Jun 2015 15:02:44 GMT",
-    "Content-Length" "2174"},
-   :body (File. "resources/public/images/clojure-icon.gif"),
-   :routing/middleware {}})
+;; (fact (handler (req "/images/clojure-icon.gif")) =>
+;;   {:status 200,
+;;    :headers
+;;    {"Last-Modified" "Mon, 08 Jun 2015 15:02:44 GMT",
+;;     "Content-Length" "2174"},
+;;    :body (File. "resources/public/images/clojure-icon.gif"),
+;;    :routing/middleware {}})

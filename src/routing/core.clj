@@ -7,7 +7,7 @@
         [monads.maybe :only [maybe->]]
         routing.util
         [annotate.fns :only [defn$]]
-        [annotate.types :only [Any Seq Regex Fn Int IFn LazySeq]]
+        [annotate.types :only [Any Seq Regex Fn Int IFn LazySeq Named]]
         routing.types
         [stch.glob :only [match-glob compile-pattern*]]))
 
@@ -15,7 +15,7 @@
   [state0 forms]
   (reduce (fn [[v state1] form]
             (if (:routing/matched? state1)
-              [v state1]
+              (reduced [v state1])
               (if (fn? form)
                 (form state1)
                 [form state1])))
@@ -56,9 +56,7 @@
             [v state2] (f state1)]
         (if (:routing/matched? state2)
           [v state2]
-          (if (path-consumed? state1)
-            [v (set-matched state1)]
-            [resp/empty-resp state1])))
+          [resp/empty-resp state1]))
       [resp/empty-resp state0])))
 
 (defmacro path
@@ -69,13 +67,10 @@
   [meth f]
   (fn [state0]
     (if (= meth (:routing/request-method state0))
-      (let [req (:routing/request state0)
-            [v state1] ((f req) state0)]
+      (let [[v state1] (f state0)]
         (if (:routing/matched? state1)
           [v state1]
-          (if (path-consumed? state0)
-            [v (set-matched state0)]
-            [resp/empty-resp state0])))
+          [resp/empty-resp state0]))
       [resp/empty-resp state0])))
 
 (defn- mk-bindings [bindings]
@@ -83,26 +78,30 @@
       bindings))
 
 (defmacro method
-  [meth bindings & body]
-  `(-method ~meth (fn ~(mk-bindings bindings) (routes ~@body))))
+  [meth & body]
+  `(-method ~meth (routes ~@body)))
 
 (defmacro GET
-  [bindings & body]
-  `(method :get ~bindings ~@body))
+  [& body]
+  `(method :get ~@body))
 
 (defmacro POST
-  [bindings & body]
-  `(method :post ~bindings ~@body))
+  [& body]
+  `(method :post ~@body))
 
 (defmacro PUT
-  [bindings & body]
-  `(method :put ~bindings ~@body))
+  [& body]
+  `(method :put ~@body))
 
 (defmacro DELETE
-  [bindings & body]
-  `(method :delete ~bindings ~@body))
+  [& body]
+  `(method :delete ~@body))
 
-(defn$ -param [[Regex Fn] StateFn => StateFn]
+(defmacro PATCH
+  [& body]
+  `(method :patch ~@body))
+
+(defn$ -segment [[Regex Fn] StateFn => StateFn]
   [[pattern parser] f]
   (fn [state0]
     (maybe-> [segment (next-path-segment state0)
@@ -112,46 +111,28 @@
             [v state2] ((f parsed-segment) state1)]
         (if (:routing/matched? state2)
           [v state2]
-          (if (path-consumed? state1)
-            [v (set-matched state1)]
-            [resp/empty-resp state1])))
+          [resp/empty-resp state1]))
       [resp/empty-resp state0])))
 
-(defmacro param
+(defmacro segment
   [pattern-parser bindings & body]
-  `(-param ~pattern-parser (fn ~(mk-bindings bindings) (routes ~@body))))
+  `(-segment ~pattern-parser (fn ~(mk-bindings bindings) (routes ~@body))))
 
 (defmacro match-int
   [bindings & body]
-  `(param (parsers :int) ~bindings ~@body))
-
-(defmacro GET-int
-  [bindings & body]
-  `(GET [] (match-int ~bindings ~@body)))
+  `(segment (parsers :int) ~bindings ~@body))
 
 (defmacro match-date
   [bindings & body]
-  `(param (parsers :date) ~bindings ~@body))
-
-(defmacro GET-date
-  [bindings & body]
-  `(GET [] (match-date ~bindings ~@body)))
+  `(segment (parsers :date) ~bindings ~@body))
 
 (defmacro match-uuid
   [bindings & body]
-  `(param (parsers :uuid) ~bindings ~@body))
-
-(defmacro GET-uuid
-  [bindings & body]
-  `(GET [] (match-uuid ~bindings ~@body)))
+  `(segment (parsers :uuid) ~bindings ~@body))
 
 (defmacro match-slug
   [bindings & body]
-  `(param (parsers :slug) ~bindings ~@body))
-
-(defmacro GET-slug
-  [bindings & body]
-  `(GET [] (match-slug ~bindings ~@body)))
+  `(segment (parsers :slug) ~bindings ~@body))
 
 (defn$ -match-regex [Regex StateFn => StateFn]
   [pattern f]
@@ -162,14 +143,32 @@
             [v state2] ((f matches) state1)]
         (if (:routing/matched? state2)
           [v state2]
-          (if (path-consumed? state1)
-            [v (set-matched state1)]
-            [resp/empty-resp state1])))
+          [resp/empty-resp state1]))
       [resp/empty-resp state0])))
 
 (defmacro match-regex
   [pattern bindings & body]
   `(-match-regex ~pattern (fn ~(mk-bindings bindings) (routes ~@body))))
+
+(defn$ -params [[Named] StateFn => StateFn]
+  [ps f]
+  (fn [state]
+    (let [params (-> state :routing/request :params)]
+      ((f (select-values params ps)) state))))
+
+(defmacro params
+  [ps bindings & body]
+  `(-params ~ps (fn ~bindings (routes ~@body))))
+
+(defn$ -param [Named StateFn => StateFn]
+  [p f]
+  (fn [state]
+    (let [params (-> state :routing/request :params)]
+      ((f (get params p)) state))))
+
+(defmacro param
+  [p bindings & body]
+  `(-param ~p (fn ~bindings (routes ~@body))))
 
 (defn$ -scheme [Scheme StateFn => StateFn]
   [s f]
@@ -178,9 +177,7 @@
       (let [[v state1] (f state0)]
         (if (:routing/matched? state1)
           [v state1]
-          (if (path-consumed? state0)
-            [v (set-matched state0)]
-            [resp/empty-resp state0])))
+          [resp/empty-resp state0]))
       [resp/empty-resp state0])))
 
 (defmacro scheme
@@ -202,9 +199,7 @@
       (let [[v state1] (f state0)]
         (if (:routing/matched? state1)
           [v state1]
-          (if (path-consumed? state0)
-            [v (set-matched state0)]
-            [resp/empty-resp state0])))
+          [resp/empty-resp state0]))
       [resp/empty-resp state0])))
 
 (defmacro port
@@ -219,9 +214,7 @@
       (let [[v state1] (f state0)]
         (if (:routing/matched? state1)
           [v state1]
-          (if (path-consumed? state0)
-            [v (set-matched state0)]
-            [resp/empty-resp state0])))
+          [resp/empty-resp state0]))
       [resp/empty-resp state0])))
 
 (defmacro remote-address
@@ -236,9 +229,7 @@
       (let [[v state1] (f state0)]
         (if (:routing/matched? state1)
           [v state1]
-          (if (path-consumed? state0)
-            [v (set-matched state0)]
-            [resp/empty-resp state0])))
+          [resp/empty-resp state0]))
       [resp/empty-resp state0])))
 
 (defmacro domain
@@ -253,9 +244,7 @@
             [v state2] ((f result) state1)]
         (if (:routing/matched? state2)
           [v state2]
-          (if (path-consumed? state1)
-            [v (set-matched state1)]
-            [resp/empty-resp state1])))
+          [resp/empty-resp state1]))
       [resp/empty-resp state0])))
 
 (defmacro pred
@@ -328,7 +317,7 @@
 (defn$ -headers [StateFn => StateFn]
   [f]
   (fn [state]
-    ((f (-> state :routing/request :headers) state))))
+    ((f (-> state :routing/request :headers)) state)))
 
 (defmacro headers
   [bindings & body]
@@ -337,7 +326,7 @@
 (defn$ -body [StateFn => StateFn]
   [f]
   (fn [state]
-    ((f (-> state :routing/request :body) state))))
+    ((f (-> state :routing/request :body)) state)))
 
 (defmacro body
   [bindings & body]

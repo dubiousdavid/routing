@@ -65,15 +65,16 @@
 (defroutes users
   (path "users"
     (state-routes [db (asks (comp :db :app))]
-      (GET-int [id]
-        (resp (get-user db id)))
-      (POST [{params :params}]
-        (let-routes [{:strs [first-name last-name]} params]
-          (resp (add-user db first-name last-name))))
-      (DELETE [{params :params}]
-        (let-routes [{id "id"} params
-                     id (Integer/parseInt id)]
-          (resp (if (remove-user db id)
+      (GET
+        (match-int [id]
+          (resp (get-user db id))))
+      (POST
+        (params ["firstname" "lastname"] [[first-name last-name]]
+          (resp (when (add-user db first-name last-name)
+                  (format "%s %s successfully inserted" first-name last-name)))))
+      (DELETE
+        (param "id" [id]
+          (resp (if (remove-user db (Integer/parseInt id))
                   "User successfully deleted"
                   "User not found")))))))
 
@@ -87,19 +88,19 @@
         (path "comments"
           (log/info "Comments path")
           (match-int [comment-id]
-            (get-in comments [post-id comment-id]))
+            (resp (get-in comments [post-id comment-id])))
           (resp (comments post-id)))
-        (get posts post-id))
+        (resp (get posts post-id)))
       (match-date [date]
-        (str "Blog post on " date))
-      (param [#"[A-Z]{2}" identity] [country-code]
-        (posts-by-country country-code))
+        (resp (str "Blog post on " date)))
+      (segment [#"[A-Z]{2}" identity] [country-code]
+        (resp (posts-by-country country-code)))
       (resp "Blog"))
     (path "req"
-      (request [req] req))
+      (request [req] (resp req)))
     (path "faq"
       (pred faqs [faq]
-        (str "FAQ: " faq)))))
+        (resp (str "FAQ: " faq))))))
 
 (defroutes api
   (domain "api.*"
@@ -107,10 +108,10 @@
       (path "posts"
         (match-uuid [uuid]
           (let-routes [uuid (.toString uuid)]
-            (GET [] (str "Post " uuid))
-            (POST [req] (str "Post " uuid " added"))
-            (PUT [req] (str "Post  " uuid " updated"))))
-        posts))))
+            (GET (resp (str "Post " uuid)))
+            (POST (resp (str "Post " uuid " added")))
+            (PUT (resp (str "Post  " uuid " updated")))))
+        (resp posts)))))
 
 (defroutes admin
   (domain "admin.example.org"
@@ -129,7 +130,7 @@
             (assoc :session {:viewed animal})
             resp)))
     (path "viewed"
-      (GET [req] (:session req)))
+      (GET [req] (resp (:session req))))
     (remote-address "216.*"
       (resp "You may enter sir."))
     (match-regex #"launch-(.+)" [[_ launched-item]]
