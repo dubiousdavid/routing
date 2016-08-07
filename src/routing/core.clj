@@ -7,7 +7,7 @@
         [monads.maybe :only [maybe->]]
         routing.util
         [annotate.fns :only [defn$]]
-        [annotate.types :only [Any Seq Regex Fn Int IFn LazySeq Named]]
+        [annotate.types :only [Any Seq Regex Fn Int IFn LazySeq Named Keyword Map]]
         routing.types
         [stch.glob :only [match-glob compile-pattern*]]))
 
@@ -56,7 +56,7 @@
             [v state2] (f state1)]
         (if (:routing/matched? state2)
           [v state2]
-          [resp/empty-resp state1]))
+          [resp/empty-resp state0]))
       [resp/empty-resp state0])))
 
 (defmacro path
@@ -111,7 +111,7 @@
             [v state2] ((f parsed-segment) state1)]
         (if (:routing/matched? state2)
           [v state2]
-          [resp/empty-resp state1]))
+          [resp/empty-resp state0]))
       [resp/empty-resp state0])))
 
 (defmacro segment
@@ -143,32 +143,132 @@
             [v state2] ((f matches) state1)]
         (if (:routing/matched? state2)
           [v state2]
-          [resp/empty-resp state1]))
+          [resp/empty-resp state0]))
       [resp/empty-resp state0])))
 
 (defmacro match-regex
   [pattern bindings & body]
   `(-match-regex ~pattern (fn ~(mk-bindings bindings) (routes ~@body))))
 
-(defn$ -params [[Named] StateFn => StateFn]
-  [ps f]
-  (fn [state]
-    (let [params (-> state :routing/request :params)]
-      ((f (select-values params ps)) state))))
+(defn$ -req-request-values [[Named] Keyword String StateFn => StateFn]
+  [ks request-key error-msg f]
+  (fn [state0]
+    (let [kvs (-> state0 :routing/request request-key)
+          [missing present] (reduce (fn [[missing present] k]
+                                      (let [value (get kvs k)]
+                                        (if value
+                                          [missing (assoc present value)]
+                                          [(assoc missing k) present])))
+                                    [[][]] ks)]
+      (if (empty? missing)
+        (let [[v state1] ((f present) state0)]
+          (if (:routing/matched? state1)
+            [v state1]
+            [resp/empty-resp state0]))
+        [(resp/bad-request (format error-msg (string/join ", " missing)))
+         (set-matched state0)]))))
+
+(defn$ -req-request-value [Named Keyword String StateFn => StateFn]
+  [k request-key error-msg f]
+  (fn [state0]
+    (let [kvs (-> state0 :routing/request request-key)
+          value (get kvs k)]
+      (if (some? value)
+        (let [[v state1] ((f value) state0)]
+          (if (:routing/matched? state1)
+            [v state1]
+            [resp/empty-resp state0]))
+        [(resp/bad-request (format error-msg k)) (set-matched state0)]))))
+
+(defn$ -request-values= [Map Keyword StateFn => StateFn]
+  [expected-kvs request-key f]
+  (fn [state0]
+    (let [kvs (-> state0 :routing/request request-key)
+          equal? (= (select-keys kvs (keys expected-kvs)) expected-kvs)]
+      (if equal?
+        (let [[v state1] (f state0)]
+          (if (:routing/matched? state1)
+            [v state1]
+            [resp/empty-resp state0]))
+        [resp/empty-resp state0]))))
+
+(defn$ -request-values [[Named] Keyword StateFn => StateFn]
+  [ks request-key f]
+  (fn [state0]
+    (let [kvs (-> state0 :routing/request request-key)
+          [v state1] ((f (select-values kvs ks)) state0)]
+      (if (:routing/matched? state1)
+        [v state1]
+        [resp/empty-resp state0]))))
+
+(defn$ -request-value [Named Keyword StateFn => StateFn]
+  [k request-key f]
+  (fn [state0]
+    (let [kvs (-> state0 :routing/request request-key)
+          [v state1] ((f (get kvs k)) state0)]
+      (if (:routing/matched? state1)
+        [v state1]
+        [resp/empty-resp state0]))))
+
+(defmacro req-headers
+  [ps bindings & body]
+  `(-req-request-values ~ps :headers "Missing headers: %s" (fn ~bindings (routes ~@body))))
+
+(defmacro req-header
+  [p bindings & body]
+  `(-req-request-value ~p :headers "Missing header: %s" (fn ~bindings (routes ~@body))))
+
+(defmacro headers=
+  [kvs & body]
+  `(-request-values= kvs :headers (routes ~@body)))
+
+(defmacro headers
+  [hs bindings & body]
+  `(-request-values ~hs :headers (fn ~bindings (routes ~@body))))
+
+(defmacro header
+  [h bindings & body]
+  `(-request-value ~h :headers (fn ~bindings (routes ~@body))))
+
+(defmacro req-query-params
+  [ps bindings & body]
+  `(-req-request-values ~ps :query-params "Missing query params: %s" (fn ~bindings (routes ~@body))))
+
+(defmacro req-query-param
+  [p bindings & body]
+  `(-req-request-value ~p :query-params "Missing query param: %s" (fn ~bindings (routes ~@body))))
+
+(defmacro query-params=
+  [kvs & body]
+  `(-request-values= kvs :query-params (routes ~@body)))
+
+(defmacro query-params
+  [ps bindings & body]
+  `(-request-values ~ps :query-params (fn ~bindings (routes ~@body))))
+
+(defmacro query-param
+  [p bindings & body]
+  `(-request-value ~p :query-params (fn ~bindings (routes ~@body))))
+
+(defmacro req-params
+  [ps bindings & body]
+  `(-req-request-values ~ps :params "Missing params: %s" (fn ~bindings (routes ~@body))))
+
+(defmacro req-param
+  [p bindings & body]
+  `(-req-request-value ~p :params "Missing param: %s" (fn ~bindings (routes ~@body))))
+
+(defmacro params=
+  [kvs & body]
+  `(-request-values= kvs :params (routes ~@body)))
 
 (defmacro params
   [ps bindings & body]
-  `(-params ~ps (fn ~bindings (routes ~@body))))
-
-(defn$ -param [Named StateFn => StateFn]
-  [p f]
-  (fn [state]
-    (let [params (-> state :routing/request :params)]
-      ((f (get params p)) state))))
+  `(-request-values ~ps :params (fn ~bindings (routes ~@body))))
 
 (defmacro param
   [p bindings & body]
-  `(-param ~p (fn ~bindings (routes ~@body))))
+  `(-request-value ~p :params (fn ~bindings (routes ~@body))))
 
 (defn$ -scheme [Scheme StateFn => StateFn]
   [s f]
@@ -244,7 +344,7 @@
             [v state2] ((f result) state1)]
         (if (:routing/matched? state2)
           [v state2]
-          [resp/empty-resp state1]))
+          [resp/empty-resp state0]))
       [resp/empty-resp state0])))
 
 (defmacro pred
@@ -314,19 +414,14 @@
   [bindings & body]
   `(-request (fn ~bindings (routes ~@body))))
 
-(defn$ -headers [StateFn => StateFn]
-  [f]
-  (fn [state]
-    ((f (-> state :routing/request :headers)) state)))
-
-(defmacro headers
-  [bindings & body]
-  `(-headers (fn ~bindings (routes ~@body))))
-
 (defn$ -body [StateFn => StateFn]
   [f]
-  (fn [state]
-    ((f (-> state :routing/request :body)) state)))
+  (fn [state0]
+    (let [b (-> state0 :routing/request :body)
+          [v state1] ((f b) state0)]
+      (if (:routing/matched? state1)
+        [v state1]
+        [resp/empty-resp state0]))))
 
 (defmacro body
   [bindings & body]

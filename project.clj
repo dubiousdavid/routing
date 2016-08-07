@@ -4,10 +4,10 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.8.0"]
-                 [ring/ring-core "1.4.0"]
+                 [ring/ring-core "1.5.0"]
                  [com.roomkey/annotate "1.0.1"]
                  [com.2tothe8th/example "0.4.0"]
-                 [cheshire "5.6.1"]
+                 [cheshire "5.6.3"]
                  [stch-library/glob "0.3.0"]
                  [com.2tothe8th/monads "0.2.0"]
                  [org.clojure/tools.logging "0.3.1"]]

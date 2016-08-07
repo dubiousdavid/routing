@@ -63,17 +63,18 @@
   (remove-row db "DELETE FROM users where user_id = ?" user-id))
 
 (defroutes users
-  (path "users"
-    (state-routes [db (asks (comp :db :app))]
+  (state-routes [db (asks (comp :db :app))]
+    (path "users"
       (GET
         (match-int [id]
-          (resp (get-user db id))))
+          (resp (get-user db id)))))
+    (path "users"
       (POST
         (params ["firstname" "lastname"] [[first-name last-name]]
           (resp (when (add-user db first-name last-name)
                   (format "%s %s successfully inserted" first-name last-name)))))
       (DELETE
-        (param "id" [id]
+        (req-param "id" [id]
           (resp (if (remove-user db (Integer/parseInt id))
                   "User successfully deleted"
                   "User not found")))))))
@@ -130,7 +131,7 @@
             (assoc :session {:viewed animal})
             resp)))
     (path "viewed"
-      (GET [req] (resp (:session req))))
+      (GET (request [req] (resp (:session req)))))
     (remote-address "216.*"
       (resp "You may enter sir."))
     (match-regex #"launch-(.+)" [[_ launched-item]]
